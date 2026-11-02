@@ -2,9 +2,16 @@
  * Campervan MCP Server Client
  * Connects to live Cloudflare Worker MCP server:
  * https://campervan-mcp-server.garlandk.workers.dev
+ *
+ * Supports both Cloudflare Worker-to-Worker Service Bindings (zero latency in production)
+ * and public HTTP fetch (for local development).
  */
 
 const MCP_ENDPOINT = "https://campervan-mcp-server.garlandk.workers.dev";
+
+export interface Fetcher {
+  fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+}
 
 export interface McpTool {
   name: string;
@@ -12,36 +19,55 @@ export interface McpTool {
   inputSchema: Record<string, any>;
 }
 
-export async function fetchMcpTools(): Promise<McpTool[]> {
+async function sendMcpPost(
+  path: string,
+  body: any,
+  fetcher?: Fetcher,
+  timeoutMs: number = 8000
+): Promise<Response> {
+  const url = `${MCP_ENDPOINT}${path}`;
+  const headers = {
+    "Content-Type": "application/json",
+    "Accept": "application/json, text/event-stream",
+    "User-Agent": "CampervanCopilot/1.0",
+  };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  const init: RequestInit = {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+    signal: controller.signal,
+  };
+
   try {
-    const response = await fetch(`${MCP_ENDPOINT}/tools/list`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json, text/event-stream",
-        "User-Agent": "CampervanCopilot/1.0",
-      },
-      body: JSON.stringify({ jsonrpc: "2.0", method: "tools/list", id: 1 }),
-    });
+    // 1. Prefer direct Cloudflare Service Binding if available
+    if (fetcher && typeof fetcher.fetch === "function") {
+      try {
+        const res = await fetcher.fetch(url, init);
+        if (res.ok) return res;
+      } catch (err) {
+        console.warn("MCP_SERVICE binding fetch error, falling back to public fetch:", err);
+      }
+    }
+
+    // 2. Fall back to standard global fetch
+    return await fetch(url, init);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function fetchMcpTools(fetcher?: Fetcher): Promise<McpTool[]> {
+  try {
+    const response = await sendMcpPost("/tools/list", { jsonrpc: "2.0", method: "tools/list", id: 1 }, fetcher);
 
     if (response.ok) {
       const data = await response.json();
       if (data.result?.tools && Array.isArray(data.result.tools)) {
         return data.result.tools;
-      }
-    }
-
-    // Fallback: If JSON-RPC route differs, request GET /tools
-    const fallback = await fetch(`${MCP_ENDPOINT}/tools`, {
-      headers: {
-        "Accept": "application/json, text/event-stream",
-        "User-Agent": "CampervanCopilot/1.0",
-      },
-    });
-    if (fallback.ok) {
-      const fallbackData = await fallback.json();
-      if (fallbackData.tools && Array.isArray(fallbackData.tools)) {
-        return fallbackData.tools;
       }
     }
   } catch (err) {
@@ -81,21 +107,17 @@ export async function fetchMcpTools(): Promise<McpTool[]> {
   ];
 }
 
-export async function executeMcpTool(name: string, args: Record<string, any>): Promise<any> {
-  const response = await fetch(`${MCP_ENDPOINT}/tools/call`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json, text/event-stream",
-      "User-Agent": "CampervanCopilot/1.0",
-    },
-    body: JSON.stringify({
+export async function executeMcpTool(name: string, args: Record<string, any>, fetcher?: Fetcher): Promise<any> {
+  const response = await sendMcpPost(
+    "/tools/call",
+    {
       jsonrpc: "2.0",
       method: "tools/call",
       params: { name, arguments: args },
       id: Date.now(),
-    }),
-  });
+    },
+    fetcher
+  );
 
   if (!response.ok) {
     throw new Error(`MCP Tool call failed with HTTP ${response.status}`);
@@ -124,21 +146,14 @@ export async function executeMcpTool(name: string, args: Record<string, any>): P
   return data.result || {};
 }
 
-export async function checkMcpHealth(): Promise<{ status: "connected" | "degraded" | "disconnected"; toolCount: number; message: string }> {
+export async function checkMcpHealth(fetcher?: Fetcher): Promise<{ status: "connected" | "degraded" | "disconnected"; toolCount: number; message: string }> {
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 4000);
-
-    const response = await fetch(`${MCP_ENDPOINT}/tools/list`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json, text/event-stream",
-        "User-Agent": "CampervanCopilot/1.0",
-      },
-      body: JSON.stringify({ jsonrpc: "2.0", method: "tools/list", id: 1 }),
-      signal: controller.signal,
-    }).finally(() => clearTimeout(timer));
+    const response = await sendMcpPost(
+      "/tools/list",
+      { jsonrpc: "2.0", method: "tools/list", id: 1 },
+      fetcher,
+      4000
+    );
 
     if (response.ok) {
       const data = await response.json();
