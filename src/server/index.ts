@@ -6,6 +6,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { fetchMcpTools, executeMcpTool, checkMcpHealth } from "./mcpClient";
+import { DEFAULT_DEEPSEEK_MODEL, DEEPINFRA_CHAT_URL } from "./config";
 
 export type Fetcher = {
   fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -14,24 +15,31 @@ export type Fetcher = {
 export type Bindings = {
   ASSETS?: Fetcher;
   DEEPINFRA_TOKEN?: string;
+  DEEPSEEK_MODEL?: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-const DEEPINFRA_CHAT_URL = "https://api.deepinfra.com/v1/openai/chat/completions";
-const MODEL_NAME = "deepseek-ai/DeepSeek-V4-Flash-0731";
+export function getActiveModel(env?: Bindings): string {
+  return (
+    env?.DEEPSEEK_MODEL ||
+    (typeof process !== "undefined" ? process.env?.DEEPSEEK_MODEL : "") ||
+    DEFAULT_DEEPSEEK_MODEL
+  );
+}
 
 app.use("/api/*", cors());
 
 // Health & MCP status endpoint
 app.get("/api/health", async (c) => {
   const mcpStatus = await checkMcpHealth();
-  const hasToken = Boolean(c.env?.DEEPINFRA_TOKEN || process.env.DEEPINFRA_TOKEN);
+  const hasToken = Boolean(c.env?.DEEPINFRA_TOKEN || (typeof process !== "undefined" ? process.env?.DEEPINFRA_TOKEN : false));
+  const activeModel = getActiveModel(c.env);
   return c.json({
     status: "ok",
     mcp: mcpStatus,
     deepinfraConfigured: hasToken,
-    model: MODEL_NAME,
+    model: activeModel,
     timestamp: new Date().toISOString(),
   });
 });
@@ -159,6 +167,8 @@ app.post("/api/chat", async (c) => {
     );
   }
 
+  const activeModel = getActiveModel(c.env);
+
   // 2. Turn 1: Inspect prompt & determine tool calls with DeepSeek
   let initialRes: Response;
   try {
@@ -169,7 +179,7 @@ app.post("/api/chat", async (c) => {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: MODEL_NAME,
+        model: activeModel,
         messages: [systemMessage, ...messages],
         tools: formattedTools.length > 0 ? formattedTools : undefined,
         tool_choice: "auto",
@@ -226,7 +236,7 @@ app.post("/api/chat", async (c) => {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: MODEL_NAME,
+        model: activeModel,
         messages: [systemMessage, ...messages, choice, ...toolMessages],
         stream: true,
         temperature: 0.2,
