@@ -126,5 +126,21 @@ describe("mcpClient", () => {
       expect(health.status).toBe("disconnected");
       expect(health.toolCount).toBe(0);
     });
+
+    it("uses Cloudflare service binding fetcher when supplied", async () => {
+      const mockServiceFetcher = {
+        fetch: vi.fn().mockResolvedValue({
+          ok: true,
+          json: async () => ({
+            result: { tools: [{ name: "calculate_dc_wire_and_fuse" }] },
+          }),
+        } as any),
+      };
+
+      const health = await checkMcpHealth(mockServiceFetcher);
+      expect(mockServiceFetcher.fetch).toHaveBeenCalledTimes(1);
+      expect(health.status).toBe("connected");
+      expect(health.toolCount).toBe(1);
+    });
   });
 });
