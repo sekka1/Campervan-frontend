@@ -35,6 +35,7 @@ export default defineConfig(() => {
 
                 const webRes: Response = await app.fetch(webReq, {
                   DEEPINFRA_TOKEN: process.env.DEEPINFRA_TOKEN || "",
+                  DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL || "",
                   ASSETS: {
                     fetch: async () => new Response("Not found", { status: 404 })
                   }

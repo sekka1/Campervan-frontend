@@ -10,6 +10,7 @@ interface McpHealthInfo {
   toolCount?: number;
   message?: string;
   deepinfraConfigured?: boolean;
+  model?: string;
 }
 
 export const ChatContainer: React.FC = () => {
@@ -31,6 +32,7 @@ export const ChatContainer: React.FC = () => {
           toolCount: data.mcp?.toolCount || 3,
           message: data.mcp?.message || "Connected to Cloudflare Worker",
           deepinfraConfigured: data.deepinfraConfigured,
+          model: data.model,
         });
       } else {
         setMcpHealth({
@@ -267,7 +269,7 @@ export const ChatContainer: React.FC = () => {
               <div className="p-3 rounded-xl bg-slate-800/40 border border-slate-700/40 space-y-1">
                 <div className="font-semibold text-slate-200">Inference Engine:</div>
                 <div className="text-slate-400 text-xs">
-                  Model: <code className="text-sky-300">deepseek-ai/DeepSeek-V4-Flash-0731</code> via DeepInfra OpenAI-compatible API.
+                  Model: <code className="text-sky-300">{mcpHealth.model || "deepseek-ai/DeepSeek-V4.1-Flash-1017"}</code> via DeepInfra OpenAI-compatible API.
                 </div>
               </div>
 

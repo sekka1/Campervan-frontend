@@ -4,6 +4,9 @@
   "main": "./src/server/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "DEEPSEEK_MODEL": "deepseek-ai/DeepSeek-V4.1-Flash-1017"
+  },
   "assets": {
     "directory": "./dist/client",
     "binding": "ASSETS",
