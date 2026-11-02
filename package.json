@@ -7,8 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "test": "vitest run",
-    "deploy:dry-run": "vite build && cf deploy --dry-run",
-    "deploy": "vite build && cf deploy",
+    "deploy:dry-run": "vite build && wrangler deploy --dry-run",
+    "deploy": "vite build && wrangler deploy",
     "preview": "vite preview",
     "lint": "tsc --noEmit"
   },
