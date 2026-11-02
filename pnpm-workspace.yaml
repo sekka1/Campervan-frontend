@@ -1,9 +1,16 @@
+packages:
+  - '.'
+
 minimumReleaseAgeExclude:
-  - '@cloudflare/build-output-utils@0.9.7'
-  - '@cloudflare/config@0.29.1'
   - '@cloudflare/runtime-types@0.1.20'
+  - '@cloudflare/workerd-darwin-64@1.20261102.1'
+  - '@cloudflare/workerd-darwin-arm64@1.20261102.1'
+  - '@cloudflare/workerd-linux-64@1.20261102.1'
+  - '@cloudflare/workerd-linux-arm64@1.20261102.1'
+  - '@cloudflare/workerd-windows-64@1.20261102.1'
   - '@vitest/mocker@5.1.0'
-  - '@vitest/spy@5.1.0'
   - cf@1.0.0-beta.27
-  - miniflare@5.20261101.0-beta
+  - miniflare@5.20261101.0-beta || 5.20261102.0-beta
   - vitest@5.1.0
+  - workerd@1.20261102.1
+  - wrangler@4.156.2
