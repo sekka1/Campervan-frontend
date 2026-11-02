@@ -52,6 +52,18 @@ export const ChatContainer: React.FC = () => {
     checkHealth();
   }, []);
 
+  // Handle escape key to close modal
+  useEffect(() => {
+    if (!showInfoModal) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowInfoModal(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showInfoModal]);
+
   // Auto-scroll on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -163,19 +175,28 @@ export const ChatContainer: React.FC = () => {
 
       {/* Info / Architecture Modal */}
       {showInfoModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="mcp-modal-title"
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowInfoModal(false);
+          }}
+        >
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative">
             <div className="flex items-center justify-between pb-4 border-b border-slate-800">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-emerald-400" />
-                <h3 className="text-base font-bold text-slate-100">
+                <h3 id="mcp-modal-title" className="text-base font-bold text-slate-100">
                   System Architecture & MCP Server
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setShowInfoModal(false)}
-                className="text-slate-400 hover:text-slate-200 text-lg leading-none p-1"
+                aria-label="Close modal"
+                className="text-slate-400 hover:text-slate-200 text-lg leading-none p-1 rounded-lg hover:bg-slate-800 cursor-pointer"
               >
                 ✕
               </button>
@@ -185,8 +206,28 @@ export const ChatContainer: React.FC = () => {
               <div className="p-3 rounded-xl bg-slate-800/60 border border-slate-700/60 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-slate-200">Campervan MCP Server:</span>
-                  <span className="flex items-center gap-1 text-emerald-400 font-mono text-xs">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Live & Connected
+                  <span
+                    className={`flex items-center gap-1 font-mono text-xs ${
+                      mcpHealth.status === "connected"
+                        ? "text-emerald-400"
+                        : mcpHealth.status === "checking"
+                        ? "text-amber-400"
+                        : "text-rose-400"
+                    }`}
+                  >
+                    {mcpHealth.status === "connected" ? (
+                      <>
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Live & Connected ({mcpHealth.toolCount || 3} tools)
+                      </>
+                    ) : mcpHealth.status === "checking" ? (
+                      <>
+                        <span className="animate-spin text-xs">⏳</span> Checking connection...
+                      </>
+                    ) : (
+                      <>
+                        <AlertTriangle className="w-3.5 h-3.5" /> {mcpHealth.message || "Disconnected"}
+                      </>
+                    )}
                   </span>
                 </div>
                 <div className="font-mono text-xs text-sky-400 break-all flex items-center gap-1">

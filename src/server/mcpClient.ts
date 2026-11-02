@@ -106,6 +106,12 @@ export async function executeMcpTool(name: string, args: Record<string, any>): P
     throw new Error(data.error.message || `MCP Error ${data.error.code}`);
   }
 
+  // Handle MCP tool errors returned with HTTP 200
+  if (data.result?.isError) {
+    const errText = data.result.content?.[0]?.text || "MCP Tool execution returned an error";
+    throw new Error(errText);
+  }
+
   const contentText = data.result?.content?.[0]?.text;
   if (contentText) {
     try {
@@ -120,11 +126,29 @@ export async function executeMcpTool(name: string, args: Record<string, any>): P
 
 export async function checkMcpHealth(): Promise<{ status: "connected" | "degraded" | "disconnected"; toolCount: number; message: string }> {
   try {
-    const tools = await fetchMcpTools();
-    if (tools.length > 0) {
-      return { status: "connected", toolCount: tools.length, message: "MCP Server Connected" };
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+
+    const response = await fetch(`${MCP_ENDPOINT}/tools/list`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+        "User-Agent": "CampervanCopilot/1.0",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", method: "tools/list", id: 1 }),
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timer));
+
+    if (response.ok) {
+      const data = await response.json();
+      const count = data.result?.tools?.length || 0;
+      if (count > 0) {
+        return { status: "connected", toolCount: count, message: "MCP Server Connected" };
+      }
+      return { status: "degraded", toolCount: 0, message: "MCP Server returned 0 tools" };
     }
-    return { status: "degraded", toolCount: 0, message: "MCP Server Degraded" };
+    return { status: "degraded", toolCount: 0, message: `MCP Server returned HTTP ${response.status}` };
   } catch (err: any) {
     return { status: "disconnected", toolCount: 0, message: err?.message || "MCP Connection Failed" };
   }

@@ -78,9 +78,11 @@ app.post("/api/chat", async (c) => {
   if (!apiKey) {
     // If the user asked about wire/fuse sizing or Transit CCP, execute the tool directly!
     const lastUserMsg = [...messages].reverse().find((m) => m.role === "user")?.content || "";
-    const lower = lastUserMsg.toLowerCase();
+    const normalized = lastUserMsg.toLowerCase().trim();
+    const isWireStarter = normalized.includes("12v 2000w inverter wire & fuse");
+    const isTransitStarter = normalized.includes("ford transit ccp1 & ccp2");
 
-    if (lower.includes("wire") || lower.includes("fuse") || lower.includes("inverter")) {
+    if (isWireStarter) {
       try {
         const toolResult = await executeMcpTool("calculate_dc_wire_and_fuse", {
           system_voltage: 12,
@@ -89,20 +91,24 @@ app.post("/api/chat", async (c) => {
           allowable_drop_percent: 3,
         });
 
+        if (!toolResult.recommended_awg || !toolResult.recommended_fuse_amps) {
+          throw new Error("Incomplete result from calculate_dc_wire_and_fuse");
+        }
+
         const reply = `### ⚡ 12V 2000W Inverter Wire & Fuse Sizing (10ft run)\n\n` +
           `Based on **ABYC E-11 standards** calculated via the live Campervan MCP server:\n\n` +
           `| Parameter | Specification |\n` +
           `| :--- | :--- |\n` +
-          `| **Recommended Conductor** | **${toolResult.recommended_awg || "1/0 AWG"}** (Stranded Tinned Copper, 105°C) |\n` +
-          `| **Overcurrent Protection (Fuse)** | **${toolResult.recommended_fuse_amps || 225}A** (${toolResult.fuse_type || "MRBF / Class T"}) |\n` +
-          `| **Voltage Drop** | **${toolResult.exact_voltage_drop_percent || 2.72}%** (${toolResult.exact_voltage_drop_volts || 0.33}V on 12V system) |\n` +
-          `| **Circuit Ampacity Rating** | ${toolResult.wire_ampacity_amps || 285}A |\n` +
-          `| **Total Conductor Path** | ${toolResult.round_trip_feet || 20} ft round-trip |\n\n` +
+          `| **Recommended Conductor** | **${toolResult.recommended_awg}** (Stranded Tinned Copper, 105°C) |\n` +
+          `| **Overcurrent Protection (Fuse)** | **${toolResult.recommended_fuse_amps}A** (${toolResult.fuse_type || "MRBF / Class T"}) |\n` +
+          `| **Voltage Drop** | **${toolResult.exact_voltage_drop_percent ?? 2.72}%** (${toolResult.exact_voltage_drop_volts ?? 0.33}V on 12V system) |\n` +
+          `| **Circuit Ampacity Rating** | ${toolResult.wire_ampacity_amps ?? 285}A |\n` +
+          `| **Total Conductor Path** | ${toolResult.round_trip_feet ?? 20} ft round-trip |\n\n` +
           `#### 🛡️ ABYC E-11 Safety Invariants:\n` +
           `* **Fuse Placement:** ${toolResult.safety_invariants?.fuse_placement || "Overcurrent protection MUST be installed within 7 inches of the battery positive terminal."}\n` +
           `* **Never install the primary fuse at the inverter terminal.**\n` +
           `* **Inverse Gauge Warning:** AWG is inverse (1/0 and 2/0 are larger than 2 AWG; 4 AWG is undersized and hazardous).\n\n` +
-          `> *Note: Server running with live MCP server. Set \`DEEPINFRA_TOKEN\` in Secrets for custom LLM conversational turns.*`;
+          `> *Note: Sized via live MCP server. Configure \`DEEPINFRA_TOKEN\` in Secrets for free-form conversational reasoning.*`;
 
         return new Response(reply, {
           headers: {
@@ -115,7 +121,7 @@ app.post("/api/chat", async (c) => {
       }
     }
 
-    if (lower.includes("ccp") || lower.includes("transit")) {
+    if (isTransitStarter) {
       try {
         const toolResult = await executeMcpTool("search_van_manuals", {
           query: "Ford Transit CCP1 CCP2 Customer Connection Point specs amp rating BEMM",
@@ -132,7 +138,7 @@ app.post("/api/chat", async (c) => {
           `#### ⚠️ Ford BEMM Requirements:\n` +
           `* Do NOT tap directly into vehicle starting battery posts; always use factory CCP connection points.\n` +
           `* Vehicle chassis ground must use approved OEM ground points (never drill into high-strength boron steel frame rails).\n\n` +
-          `> *Note: Server running with live MCP server. Set \`DEEPINFRA_TOKEN\` in Secrets for free-form conversational reasoning.*`;
+          `> *Note: Verified via live MCP server. Configure \`DEEPINFRA_TOKEN\` in Secrets for free-form conversational reasoning.*`;
 
         return new Response(reply, {
           headers: {
@@ -167,6 +173,7 @@ app.post("/api/chat", async (c) => {
         messages: [systemMessage, ...messages],
         tools: formattedTools.length > 0 ? formattedTools : undefined,
         tool_choice: "auto",
+        parallel_tool_calls: false,
         temperature: 0.1,
       }),
     });
@@ -184,20 +191,31 @@ app.post("/api/chat", async (c) => {
 
   // 3. Handle Tool Execution
   if (choice?.tool_calls && choice.tool_calls.length > 0) {
-    const toolCall = choice.tool_calls[0];
-    const functionName = toolCall.function.name;
-    let functionArgs: Record<string, any> = {};
-    try {
-      functionArgs = JSON.parse(toolCall.function.arguments || "{}");
-    } catch {
-      functionArgs = {};
-    }
+    const toolMessages: any[] = [];
+    let successfulToolName: string | undefined = undefined;
 
-    let toolResult: any;
-    try {
-      toolResult = await executeMcpTool(functionName, functionArgs);
-    } catch (err: any) {
-      toolResult = { error: err.message };
+    for (const toolCall of choice.tool_calls) {
+      const functionName = toolCall.function.name;
+      let functionArgs: Record<string, any> = {};
+      try {
+        functionArgs = JSON.parse(toolCall.function.arguments || "{}");
+      } catch {
+        functionArgs = {};
+      }
+
+      let toolResult: any;
+      try {
+        toolResult = await executeMcpTool(functionName, functionArgs);
+        successfulToolName = functionName;
+      } catch (err: any) {
+        toolResult = { error: err.message };
+      }
+
+      toolMessages.push({
+        role: "tool",
+        tool_call_id: toolCall.id,
+        content: JSON.stringify(toolResult),
+      });
     }
 
     // 4. Turn 2: Synthesize final streaming response with tool grounding
@@ -209,16 +227,7 @@ app.post("/api/chat", async (c) => {
       },
       body: JSON.stringify({
         model: MODEL_NAME,
-        messages: [
-          systemMessage,
-          ...messages,
-          choice,
-          {
-            role: "tool",
-            tool_call_id: toolCall.id,
-            content: JSON.stringify(toolResult),
-          },
-        ],
+        messages: [systemMessage, ...messages, choice, ...toolMessages],
         stream: true,
         temperature: 0.2,
       }),
@@ -229,14 +238,16 @@ app.post("/api/chat", async (c) => {
       return c.json({ error: `DeepInfra Turn 2 failed: ${finalRes.status}`, details: errTxt }, 502);
     }
 
-    return new Response(finalRes.body, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-        "X-Executed-Tool": functionName,
-      },
-    });
+    const headers: Record<string, string> = {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+    };
+    if (successfulToolName) {
+      headers["X-Executed-Tool"] = successfulToolName;
+    }
+
+    return new Response(finalRes.body, { headers });
   }
 
   // Direct response when no tool is required

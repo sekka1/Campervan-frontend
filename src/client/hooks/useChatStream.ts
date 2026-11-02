@@ -63,10 +63,15 @@ export function useChatStream() {
       if (!response.ok) {
         let errMessage = `Error ${response.status}`;
         try {
-          const errData = await response.json();
+          const cloned = response.clone();
+          const errData = await cloned.json();
           errMessage = errData.error || errData.message || errMessage;
         } catch {
-          errMessage = await response.text();
+          try {
+            errMessage = await response.text();
+          } catch {
+            // keep default status message
+          }
         }
         throw new Error(errMessage);
       }

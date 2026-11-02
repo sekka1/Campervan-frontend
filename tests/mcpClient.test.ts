@@ -87,6 +87,22 @@ describe("mcpClient", () => {
         executeMcpTool("calculate_dc_wire_and_fuse", { system_voltage: 12 })
       ).rejects.toThrow("MCP Tool call failed with HTTP 500");
     });
+    it("throws an error when result.isError is true", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          jsonrpc: "2.0",
+          result: {
+            isError: true,
+            content: [{ type: "text", text: "Wire distance exceeds maximum calculation limits" }],
+          },
+        }),
+      } as any);
+
+      await expect(
+        executeMcpTool("calculate_dc_wire_and_fuse", { system_voltage: 12, amperage: 500 })
+      ).rejects.toThrow("Wire distance exceeds maximum calculation limits");
+    });
   });
 
   describe("checkMcpHealth", () => {
@@ -101,6 +117,14 @@ describe("mcpClient", () => {
       const health = await checkMcpHealth();
       expect(health.status).toBe("connected");
       expect(health.toolCount).toBe(3);
+    });
+
+    it("reports disconnected status when fetch rejects", async () => {
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error("Network unreachable"));
+
+      const health = await checkMcpHealth();
+      expect(health.status).toBe("disconnected");
+      expect(health.toolCount).toBe(0);
     });
   });
 });
