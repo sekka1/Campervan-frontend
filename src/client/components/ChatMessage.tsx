@@ -80,8 +80,31 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
+                  img: ({ node, src, alt, ...props }) => (
+                    <figure className="my-4 rounded-lg border border-slate-700/80 bg-slate-800/50 p-2 overflow-hidden shadow-sm">
+                      <img
+                        src={src}
+                        alt={alt}
+                        loading="lazy"
+                        className="mx-auto max-h-[500px] w-auto max-w-full rounded object-contain shadow-sm"
+                        {...props}
+                      />
+                      {alt && (
+                        <figcaption className="mt-2 text-center text-xs font-mono text-slate-400">
+                          {alt}
+                        </figcaption>
+                      )}
+                    </figure>
+                  ),
+                  p: ({ node, children, ...props }) => {
+                    const hasImage = node?.children?.some((child: any) => child.tagName === "img");
+                    if (hasImage) {
+                      return <div className="my-2">{children}</div>;
+                    }
+                    return <p className="mb-3 leading-relaxed" {...props}>{children}</p>;
+                  },
                   table: ({ node, ...props }) => (
-                    <div className="overflow-x-auto my-3 border border-slate-700 rounded-lg">
+                    <div className="overflow-x-auto my-4 border border-slate-700 rounded-lg">
                       <table className="min-w-full divide-y divide-slate-700 text-left text-xs sm:text-sm" {...props} />
                     </div>
                   ),
@@ -89,7 +112,13 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
                     <thead className="bg-slate-800/90 text-slate-200 font-semibold uppercase tracking-wider" {...props} />
                   ),
                   th: ({ node, ...props }) => (
-                    <th className="px-3 py-2 sm:px-4 sm:py-2.5 font-semibold text-slate-200 border-b border-slate-700" {...props} />
+                    <th className="px-3 py-2 sm:px-4 sm:py-2.5 font-semibold text-slate-200 border-b border-slate-700 whitespace-nowrap" {...props} />
+                  ),
+                  tbody: ({ node, ...props }) => (
+                    <tbody className="divide-y divide-slate-800/70" {...props} />
+                  ),
+                  tr: ({ node, ...props }) => (
+                    <tr className="even:bg-slate-800/30 hover:bg-slate-800/50 transition-colors" {...props} />
                   ),
                   td: ({ node, ...props }) => (
                     <td className="px-3 py-2 sm:px-4 sm:py-2 text-slate-300 border-b border-slate-800/80 font-mono text-xs sm:text-sm" {...props} />
