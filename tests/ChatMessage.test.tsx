@@ -75,4 +75,26 @@ describe("ChatMessage", () => {
     expect(badge).toBeDefined();
     expect(badge.textContent).toContain("Verified with: OEM Van Manuals (BEMM)");
   });
+
+  it("renders embedded manual schematic images with caption", () => {
+    const schematicContent = `
+Here are the official Transit ground point schematics:
+
+![Figure E185976 - Ford Transit Grounding Locations](https://pub-655d7d799988450194dfe2dc6d5b1741.r2.dev/transit-ground.png)
+`;
+
+    const message: Message = {
+      id: "5",
+      role: "assistant",
+      content: schematicContent,
+    };
+
+    render(<ChatMessage message={message} />);
+
+    const img = screen.getByRole("img");
+    expect(img).toBeDefined();
+    expect(img.getAttribute("src")).toBe("https://pub-655d7d799988450194dfe2dc6d5b1741.r2.dev/transit-ground.png");
+    expect(img.getAttribute("alt")).toBe("Figure E185976 - Ford Transit Grounding Locations");
+    expect(screen.getByText("Figure E185976 - Ford Transit Grounding Locations")).toBeDefined();
+  });
 });
