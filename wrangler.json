@@ -19,5 +19,11 @@
     "directory": "./dist/client",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application"
-  }
+  },
+  "services": [
+    {
+      "binding": "MCP_SERVICE",
+      "service": "campervan-mcp-server"
+    }
+  ]
 }

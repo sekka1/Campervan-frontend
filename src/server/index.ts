@@ -14,6 +14,7 @@ export type Fetcher = {
 
 export type Bindings = {
   ASSETS?: Fetcher;
+  MCP_SERVICE?: Fetcher;
   DEEPINFRA_TOKEN?: string;
   DEEPSEEK_MODEL?: string;
 };
@@ -32,7 +33,7 @@ app.use("/api/*", cors());
 
 // Health & MCP status endpoint
 app.get("/api/health", async (c) => {
-  const mcpStatus = await checkMcpHealth();
+  const mcpStatus = await checkMcpHealth(c.env?.MCP_SERVICE);
   const hasToken = Boolean(c.env?.DEEPINFRA_TOKEN || (typeof process !== "undefined" ? process.env?.DEEPINFRA_TOKEN : false));
   const activeModel = getActiveModel(c.env);
   return c.json({
@@ -62,7 +63,7 @@ app.post("/api/chat", async (c) => {
   // 1. Discover available tools from the live MCP server
   let mcpTools: any[] = [];
   try {
-    mcpTools = await fetchMcpTools();
+    mcpTools = await fetchMcpTools(c.env?.MCP_SERVICE);
   } catch (err) {
     console.error("Failed to fetch MCP tools:", err);
   }
@@ -92,12 +93,16 @@ app.post("/api/chat", async (c) => {
 
     if (isWireStarter) {
       try {
-        const toolResult = await executeMcpTool("calculate_dc_wire_and_fuse", {
-          system_voltage: 12,
-          amperage: 166.7,
-          one_way_distance_feet: 10,
-          allowable_drop_percent: 3,
-        });
+        const toolResult = await executeMcpTool(
+          "calculate_dc_wire_and_fuse",
+          {
+            system_voltage: 12,
+            amperage: 166.7,
+            one_way_distance_feet: 10,
+            allowable_drop_percent: 3,
+          },
+          c.env?.MCP_SERVICE
+        );
 
         if (!toolResult.recommended_awg || !toolResult.recommended_fuse_amps) {
           throw new Error("Incomplete result from calculate_dc_wire_and_fuse");
@@ -131,11 +136,15 @@ app.post("/api/chat", async (c) => {
 
     if (isTransitStarter) {
       try {
-        const toolResult = await executeMcpTool("search_van_manuals", {
-          query: "Ford Transit CCP1 CCP2 Customer Connection Point specs amp rating BEMM",
-          chassis: "transit",
-          subsystem: "12v_dc",
-        });
+        const toolResult = await executeMcpTool(
+          "search_van_manuals",
+          {
+            query: "Ford Transit CCP1 CCP2 Customer Connection Point specs amp rating BEMM",
+            chassis: "transit",
+            subsystem: "12v_dc",
+          },
+          c.env?.MCP_SERVICE
+        );
 
         const reply = `### 📘 Ford Transit CCP1 & CCP2 Guidelines (OEM BEMM)\n\n` +
           `Verified against Ford Transit Body and Equipment Mounting Manual (BEMM):\n\n` +
@@ -215,7 +224,7 @@ app.post("/api/chat", async (c) => {
 
       let toolResult: any;
       try {
-        toolResult = await executeMcpTool(functionName, functionArgs);
+        toolResult = await executeMcpTool(functionName, functionArgs, c.env?.MCP_SERVICE);
         successfulToolName = functionName;
       } catch (err: any) {
         toolResult = { error: err.message };
